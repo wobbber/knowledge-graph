@@ -1,3 +1,4 @@
+# knowledge_graph.py
 import networkx as nx
 import spacy
 from community import community_louvain
@@ -44,10 +45,7 @@ class KnowledgeGraphBuilder:
         # Adjust the layout for better spacing
         pos = nx.spring_layout(filtered_graph, k=1.5, scale=5, seed=42)
 
-        # Set up the figure size for better spacing
-        plt.figure(figsize=(24, 16))
-
-        # Draw nodes, edges, and labels
+        plt.figure(figsize=(24, 16))  # Larger figure size for better spacing
         nx.draw_networkx_nodes(filtered_graph, pos, node_size=1500, node_color=node_colors, edgecolors="black")
         nx.draw_networkx_edges(filtered_graph, pos, alpha=0.3, edge_color="gray", width=1.5)
 
@@ -58,9 +56,5 @@ class KnowledgeGraphBuilder:
         plt.title("Enhanced Knowledge Graph", fontsize=20)
         plt.axis("off")
         plt.tight_layout()
-
-        # Use Streamlit's pyplot to render the graph
-        import streamlit as st
-        st.pyplot(plt)
-
-        plt.close()  # Close the plot after rendering
+        plt.savefig("knowledge_graph.png")
+        plt.show()
