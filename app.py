@@ -29,3 +29,4 @@ if uploaded_file:
 
     # Visualize the knowledge graph
     kg_builder.visualize_graph()
+    st.image("knowledge_graph.png", caption="Knowledge Graph", use_column_width=True)
