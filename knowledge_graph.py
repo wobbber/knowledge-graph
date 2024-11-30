@@ -1,85 +1,60 @@
-import spacy
+# knowledge_graph.py
 import networkx as nx
-import matplotlib.pyplot as plt
-import pdfplumber
-import pytesseract
-from PIL import Image
-from collections import defaultdict
-import streamlit as st
-
 import spacy
-
-try:
-    nlp = spacy.load("en_core_web_sm")
-except OSError:
-    from spacy.cli import download
-    download("en_core_web_sm")
-    nlp = spacy.load("en_core_web_sm")
-
+from community import community_louvain
+import matplotlib.pyplot as plt
 
 class KnowledgeGraphBuilder:
     def __init__(self):
-        self.graph = nx.DiGraph()
+        self.graph = nx.Graph()
+        try:
+            self.nlp = spacy.load("en_core_web_sm")
+        except OSError:
+            from spacy.cli import download
+            download("en_core_web_sm")
+            self.nlp = spacy.load("en_core_web_sm")
 
-    def extract_text_from_pdf(self, pdf_path):
-        """Extract text from a PDF document."""
-        text = ""
-        with pdfplumber.open(pdf_path) as pdf:
-            for page in pdf.pages:
-                text += page.extract_text()
-        return text
-
-    def extract_text_from_image(self, image_path):
-        """Extract text from an image."""
-        return pytesseract.image_to_string(Image.open(image_path))
-
-    def infer_schema(self, text):
-        """Infer schema by identifying entities, relationships, and properties."""
-        doc = nlp(text)
-        entities = defaultdict(set)
-        relationships = []
-
-        # Extract entities
-        for ent in doc.ents:
-            entities[ent.label_].add(ent.text)
-
-        # Extract relationships (noun chunks with verbs)
-        for chunk in doc.noun_chunks:
-            if chunk.root.head.pos_ == "VERB":
-                relationships.append((chunk.text, chunk.root.head.text, chunk.root.head.i))
-
-        schema = {
-            "entities": dict(entities),
-            "relationships": relationships,
-        }
-        return schema
-
-    def build_graph(self, schema):
-        """Build knowledge graph from inferred schema."""
-        for entity_type, entity_names in schema["entities"].items():
-            for name in entity_names:
-                self.graph.add_node(name, label=entity_type)
-
-        for subj, rel, obj in schema["relationships"]:
-            self.graph.add_edge(subj, obj, relation=rel)
+    def process_document(self, text):
+        """Processes the document to extract entities and relationships."""
+        doc = self.nlp(text)
+        for sent in doc.sents:
+            entities = [ent for ent in sent.ents]
+            for i, ent1 in enumerate(entities):
+                for ent2 in entities[i + 1:]:
+                    self.graph.add_node(ent1.text, label=ent1.label_)
+                    self.graph.add_node(ent2.text, label=ent2.label_)
+                    self.graph.add_edge(ent1.text, ent2.text, weight=1)
 
     def visualize_graph(self):
-        """Visualize the knowledge graph."""
-        pos = nx.spring_layout(self.graph)
-        labels = nx.get_edge_attributes(self.graph, "relation")
-        nx.draw(self.graph, pos, with_labels=True, node_size=2000, node_color="lightblue")
-        nx.draw_networkx_edge_labels(self.graph, pos, edge_labels=labels)
-        st.pyplot(plt)
+        """Visualizes the knowledge graph with enhanced spacing and filtering."""
+        partition = community_louvain.best_partition(self.graph)
 
-    def add_document(self, document_path, file_type="text"):
-        """Add and process a new document."""
-        if file_type == "pdf":
-            text = self.extract_text_from_pdf(document_path)
-        elif file_type == "image":
-            text = self.extract_text_from_image(document_path)
-        else:
-            with open(document_path, "r") as file:
-                text = file.read()
+        # Assign colors to clusters
+        cluster_colors = plt.cm.tab20.colors
 
-        schema = self.infer_schema(text)
-        self.build_graph(schema)
+        # Filter nodes based on degree threshold (keeping nodes with a degree >= 2)
+        degree_threshold = 2  # Set to a low threshold to ensure important entities are not removed
+        filtered_nodes = [node for node, degree in self.graph.degree() if degree >= degree_threshold]
+        filtered_graph = self.graph.subgraph(filtered_nodes)
+
+        # Assign colors for filtered nodes only
+        node_colors = [
+            cluster_colors[partition[node] % len(cluster_colors)] for node in filtered_graph
+        ]
+
+        # Adjust the layout for better spacing
+        pos = nx.spring_layout(filtered_graph, k=1.5, scale=5, seed=42)
+
+        plt.figure(figsize=(24, 16))  # Larger figure size for better spacing
+        nx.draw_networkx_nodes(filtered_graph, pos, node_size=1500, node_color=node_colors, edgecolors="black")
+        nx.draw_networkx_edges(filtered_graph, pos, alpha=0.3, edge_color="gray", width=1.5)
+
+        # Draw labels for nodes with the highest degree
+        labels = {node: node for node, degree in filtered_graph.degree() if degree >= 3}
+        nx.draw_networkx_labels(filtered_graph, pos, labels=labels, font_size=12, font_color="black", font_family="sans-serif")
+
+        plt.title("Enhanced Knowledge Graph", fontsize=20)
+        plt.axis("off")
+        plt.tight_layout()
+        plt.savefig("knowledge_graph.png")
+        plt.show()
